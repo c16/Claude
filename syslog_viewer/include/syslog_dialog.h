@@ -5,6 +5,7 @@
 #include <memory>
 #include <vector>
 #include <mutex>
+#include <fstream>
 #include "syslog_message.h"
 #include "udp_listener.h"
 
@@ -28,11 +29,18 @@ public:
     // Export messages
     void export_to_file(const std::string& filename);
 
+    // File logging
+    void enable_file_logging(bool enabled);
+    bool is_file_logging_enabled() const;
+    void set_log_file_path(const std::string& path);
+    std::string get_log_file_path() const;
+
 protected:
     // UI Components
     Gtk::Box controls_box_;
     Gtk::Box filter_box_;
     Gtk::Box button_box_;
+    Gtk::Box logging_box_;
 
     Gtk::Label port_label_;
     Gtk::SpinButton port_spin_;
@@ -40,6 +48,11 @@ protected:
     Gtk::Button stop_button_;
     Gtk::Button clear_button_;
     Gtk::Button export_button_;
+
+    Gtk::CheckButton enable_logging_check_;
+    Gtk::Label log_file_label_;
+    Gtk::Entry log_file_entry_;
+    Gtk::Button log_file_browse_button_;
 
     Gtk::Label filter_label_;
     Gtk::Entry filter_entry_;
@@ -98,6 +111,8 @@ protected:
     void on_clear_clicked();
     void on_export_clicked();
     void on_filter_changed();
+    void on_logging_toggled();
+    void on_log_file_browse_clicked();
 
     // Message handling
     void on_message_received(const SyslogMessage& msg);
@@ -113,6 +128,13 @@ protected:
     Glib::Dispatcher message_dispatcher_;
     SyslogMessage pending_message_;
     std::mutex pending_mutex_;
+
+    // File logging
+    std::ofstream log_file_stream_;
+    std::string log_file_path_;
+    bool file_logging_enabled_;
+    std::mutex log_file_mutex_;
+    void write_message_to_file(const SyslogMessage& msg);
 };
 
 #endif // SYSLOG_DIALOG_H

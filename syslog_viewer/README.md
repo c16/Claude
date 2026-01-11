@@ -26,6 +26,7 @@ A GTKmm-based application for displaying and filtering incoming syslog UDP messa
 ### Additional Features
 - **Configurable Port**: Change the listening port (default: 514)
 - **Message Export**: Export messages to CSV format
+- **File Logging**: Automatically log all incoming messages to a file in real-time
 - **Clear History**: Clear all messages with one click
 - **Auto-scroll**: Automatically scrolls to newest messages
 - **Message Count**: Shows total message count in status bar
@@ -142,6 +143,31 @@ sudo ./build/syslog_viewer
 4. **Stop Listening**: Click "Stop" to stop receiving messages
 5. **Clear Messages**: Click "Clear" to remove all messages from view
 6. **Export**: Click "Export" to save messages to a CSV file
+
+### File Logging
+
+The application can automatically log all incoming messages to a file in real-time:
+
+1. **Enable Logging**: Check the "Log to file" checkbox
+2. **Select File**: Enter a file path or click "Browse..." to select a log file
+   - Default location: `/tmp/syslog_viewer.log`
+   - Files are opened in append mode (existing content is preserved)
+3. **Log Format**: Messages are written in pipe-delimited format:
+   ```
+   Timestamp|Severity|Facility|Source IP|Hostname|Application|Message
+   ```
+4. **Real-time Writing**: Messages are written immediately as they arrive
+5. **Disable Logging**: Uncheck the "Log to file" checkbox to stop logging
+
+**Example Log Entry:**
+```
+2026-01-11 15:30:45|INFO|user|192.168.1.100|webserver|nginx|GET /index.html 200
+```
+
+**Notes:**
+- Log files are flushed after each write to ensure data persistence
+- Logging can be toggled on/off without stopping message reception
+- File path can be changed at any time (will close old file and open new one)
 
 ### Filtering Messages
 
@@ -272,6 +298,12 @@ int get_port() const;
 // Message management
 void clear_messages();
 void export_to_file(const std::string& filename);
+
+// File logging
+void enable_file_logging(bool enabled);
+bool is_file_logging_enabled() const;
+void set_log_file_path(const std::string& path);
+std::string get_log_file_path() const;
 ```
 
 ### UdpListener Class
@@ -331,6 +363,26 @@ Error: Failed to bind to port 514
 - Efficient GTK+ tree model with filtering
 - Messages stored in memory (consider clearing periodically for long-running sessions)
 
+## File Formats
+
+### Log File Format
+When file logging is enabled, messages are written in pipe-delimited format:
+
+```
+# Syslog Viewer Log File
+# Format: Timestamp|Severity|Facility|Source IP|Hostname|Application|Message
+2026-01-11 15:30:45|INFO|user|192.168.1.100|webserver|nginx|GET /index.html 200
+2026-01-11 15:30:46|ERROR|daemon|192.168.1.101|appserver|myapp|Connection failed
+```
+
+### CSV Export Format
+The export function creates CSV files with headers:
+
+```csv
+Timestamp,Severity,Facility,Source IP,Hostname,Application,Message
+2026-01-11 15:30:45,INFO,user,192.168.1.100,webserver,nginx,GET /index.html 200
+```
+
 ## Future Enhancements
 
 Potential additions:
@@ -343,6 +395,8 @@ Potential additions:
 - Multiple simultaneous listeners
 - Message search history
 - Custom column visibility
+- Log file rotation
+- Compression of old log files
 
 ## License
 

@@ -7,11 +7,15 @@ SyslogDialog::SyslogDialog()
       controls_box_(Gtk::ORIENTATION_HORIZONTAL, 5),
       filter_box_(Gtk::ORIENTATION_HORIZONTAL, 5),
       button_box_(Gtk::ORIENTATION_HORIZONTAL, 5),
+      logging_box_(Gtk::ORIENTATION_HORIZONTAL, 5),
       port_label_("Port:"),
       start_button_("Start"),
       stop_button_("Stop"),
       clear_button_("Clear"),
       export_button_("Export"),
+      enable_logging_check_("Log to file"),
+      log_file_label_("Log file:"),
+      log_file_browse_button_("Browse..."),
       filter_label_("Filter:"),
       emergency_check_("EMERG"),
       alert_check_("ALERT"),
@@ -22,7 +26,8 @@ SyslogDialog::SyslogDialog()
       info_check_("INFO"),
       debug_check_("DEBUG"),
       status_label_("Not listening"),
-      listener_(std::make_unique<UdpListener>(514)) {
+      listener_(std::make_unique<UdpListener>(514)),
+      file_logging_enabled_(false) {
 
     set_margin_top(5);
     set_margin_bottom(5);
@@ -44,6 +49,17 @@ SyslogDialog::SyslogDialog()
     controls_box_.pack_start(clear_button_, Gtk::PACK_SHRINK);
     controls_box_.pack_start(export_button_, Gtk::PACK_SHRINK);
     controls_box_.pack_start(status_label_, Gtk::PACK_EXPAND_WIDGET);
+
+    // Set up logging box
+    logging_box_.set_margin_bottom(5);
+    logging_box_.pack_start(enable_logging_check_, Gtk::PACK_SHRINK);
+    logging_box_.pack_start(log_file_label_, Gtk::PACK_SHRINK);
+    logging_box_.pack_start(log_file_entry_, Gtk::PACK_EXPAND_WIDGET);
+    logging_box_.pack_start(log_file_browse_button_, Gtk::PACK_SHRINK);
+
+    // Set default log file path
+    log_file_entry_.set_text("/tmp/syslog_viewer.log");
+    log_file_path_ = "/tmp/syslog_viewer.log";
 
     // Set up filter box
     filter_box_.set_margin_bottom(5);
@@ -100,6 +116,7 @@ SyslogDialog::SyslogDialog()
 
     // Pack everything
     pack_start(controls_box_, Gtk::PACK_SHRINK);
+    pack_start(logging_box_, Gtk::PACK_SHRINK);
     pack_start(filter_box_, Gtk::PACK_SHRINK);
     pack_start(button_box_, Gtk::PACK_SHRINK);
     pack_start(scrolled_window_, Gtk::PACK_EXPAND_WIDGET);
@@ -147,6 +164,14 @@ SyslogDialog::SyslogDialog()
         sigc::mem_fun(*this, &SyslogDialog::on_filter_changed)
     );
 
+    enable_logging_check_.signal_toggled().connect(
+        sigc::mem_fun(*this, &SyslogDialog::on_logging_toggled)
+    );
+
+    log_file_browse_button_.signal_clicked().connect(
+        sigc::mem_fun(*this, &SyslogDialog::on_log_file_browse_clicked)
+    );
+
     // Set up message dispatcher
     message_dispatcher_.connect(
         sigc::mem_fun(*this, &SyslogDialog::add_message_to_view)
@@ -161,6 +186,9 @@ SyslogDialog::SyslogDialog()
 
 SyslogDialog::~SyslogDialog() {
     stop_listening();
+    if (log_file_stream_.is_open()) {
+        log_file_stream_.close();
+    }
 }
 
 void SyslogDialog::start_listening() {
@@ -282,6 +310,11 @@ void SyslogDialog::on_message_received(const SyslogMessage& msg) {
         messages_.push_back(msg);
     }
 
+    // Write to file if logging is enabled
+    if (file_logging_enabled_) {
+        write_message_to_file(msg);
+    }
+
     {
         std::lock_guard<std::mutex> lock(pending_mutex_);
         pending_message_ = msg;
@@ -348,10 +381,129 @@ bool SyslogDialog::filter_func(const Gtk::TreeModel::const_iterator& iter) {
 void SyslogDialog::update_status() {
     std::lock_guard<std::mutex> lock(messages_mutex_);
 
+    std::string status = "";
     if (listener_->is_listening()) {
-        status_label_.set_text("Listening on port " + std::to_string(listener_->get_port()) +
-                              " (" + std::to_string(messages_.size()) + " messages)");
+        status = "Listening on port " + std::to_string(listener_->get_port());
     } else {
-        status_label_.set_text("Not listening (" + std::to_string(messages_.size()) + " messages)");
+        status = "Not listening";
     }
+
+    status += " (" + std::to_string(messages_.size()) + " messages)";
+
+    if (file_logging_enabled_) {
+        status += " [Logging to file]";
+    }
+
+    status_label_.set_text(status);
+}
+
+void SyslogDialog::enable_file_logging(bool enabled) {
+    enable_logging_check_.set_active(enabled);
+}
+
+bool SyslogDialog::is_file_logging_enabled() const {
+    return file_logging_enabled_;
+}
+
+void SyslogDialog::set_log_file_path(const std::string& path) {
+    log_file_path_ = path;
+    log_file_entry_.set_text(path);
+}
+
+std::string SyslogDialog::get_log_file_path() const {
+    return log_file_path_;
+}
+
+void SyslogDialog::on_logging_toggled() {
+    file_logging_enabled_ = enable_logging_check_.get_active();
+
+    if (file_logging_enabled_) {
+        // Open log file in append mode
+        std::lock_guard<std::mutex> lock(log_file_mutex_);
+        log_file_path_ = log_file_entry_.get_text();
+
+        log_file_stream_.open(log_file_path_, std::ios::out | std::ios::app);
+
+        if (!log_file_stream_.is_open()) {
+            Gtk::MessageDialog dialog("Error opening log file: " + log_file_path_,
+                                     false, Gtk::MESSAGE_ERROR, Gtk::BUTTONS_OK, true);
+            dialog.run();
+            file_logging_enabled_ = false;
+            enable_logging_check_.set_active(false);
+        } else {
+            // Write header if file is new/empty
+            log_file_stream_.seekp(0, std::ios::end);
+            if (log_file_stream_.tellp() == 0) {
+                log_file_stream_ << "# Syslog Viewer Log File\n";
+                log_file_stream_ << "# Format: Timestamp|Severity|Facility|Source IP|Hostname|Application|Message\n";
+            }
+            log_file_stream_.flush();
+        }
+    } else {
+        // Close log file
+        std::lock_guard<std::mutex> lock(log_file_mutex_);
+        if (log_file_stream_.is_open()) {
+            log_file_stream_.close();
+        }
+    }
+
+    update_status();
+}
+
+void SyslogDialog::on_log_file_browse_clicked() {
+    Gtk::FileChooserDialog dialog("Select Log File",
+                                 Gtk::FILE_CHOOSER_ACTION_SAVE);
+    dialog.add_button("Cancel", Gtk::RESPONSE_CANCEL);
+    dialog.add_button("Select", Gtk::RESPONSE_OK);
+
+    auto filter_log = Gtk::FileFilter::create();
+    filter_log->set_name("Log files");
+    filter_log->add_pattern("*.log");
+    dialog.add_filter(filter_log);
+
+    auto filter_all = Gtk::FileFilter::create();
+    filter_all->set_name("All files");
+    filter_all->add_pattern("*");
+    dialog.add_filter(filter_all);
+
+    // Set current filename if exists
+    if (!log_file_path_.empty()) {
+        dialog.set_filename(log_file_path_);
+    }
+
+    int result = dialog.run();
+
+    if (result == Gtk::RESPONSE_OK) {
+        std::string filename = dialog.get_filename();
+        if (filename.find(".log") == std::string::npos) {
+            filename += ".log";
+        }
+        log_file_entry_.set_text(filename);
+        log_file_path_ = filename;
+
+        // If logging is already enabled, reopen with new file
+        if (file_logging_enabled_) {
+            enable_logging_check_.set_active(false);
+            enable_logging_check_.set_active(true);
+        }
+    }
+}
+
+void SyslogDialog::write_message_to_file(const SyslogMessage& msg) {
+    std::lock_guard<std::mutex> lock(log_file_mutex_);
+
+    if (!log_file_stream_.is_open()) {
+        return;
+    }
+
+    // Write message in pipe-delimited format
+    log_file_stream_ << msg.timestamp_string() << "|"
+                     << msg.severity_string() << "|"
+                     << msg.facility_string() << "|"
+                     << msg.source_ip << "|"
+                     << msg.hostname << "|"
+                     << msg.application << "|"
+                     << msg.message << "\n";
+
+    log_file_stream_.flush();
 }
