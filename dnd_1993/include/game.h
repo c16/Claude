@@ -23,9 +23,12 @@ class Game {
   // Character creation
   void createCharacter();
   void rollAbilityScores();
-  void chooseRace();
-  void chooseClass();
+  CharacterRace chooseRace();
+  CharacterClass chooseClass();
   void equipStartingGear();
+
+  // Combat handler
+  void handleCombat();
 
   // Game state
   bool isRunning() const { return running_; }

@@ -60,10 +60,12 @@ class Adventure {
   std::string serialize() const;
   void deserialize(const std::string& data);
 
+  // Public combat access for game loop
+  Combat combat_;
+
  private:
   Character& player_;
   Dice& dice_;
-  Combat combat_;
 
   std::string currentLocation_;
   std::map<std::string, Location> locations_;
