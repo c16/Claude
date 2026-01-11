@@ -67,12 +67,58 @@ The app comes with 10 common ingredients:
 - Salmon
 - Sweet Potato
 
-## Getting Started
+## Platform Support
 
-### Prerequisites
-- Flutter SDK (3.0.0 or higher)
-- Android Studio / Xcode for mobile development
-- Dart SDK
+This app supports multiple platforms:
+
+### Android
+- **Minimum SDK**: 21 (Android 5.0 Lollipop)
+- **Target SDK**: 34 (Android 14)
+- **Compile SDK**: 34
+- Supports all Android devices running Android 5.0 and above
+
+### iOS
+- **Minimum iOS Version**: 11.0
+- Supports iPhone and iPad
+
+### Linux Desktop
+- **Requires**: GTK+ 3.0
+- **Build System**: CMake 3.10 or higher
+- **Window Size**: 1280x720 (default)
+- Tested on Ubuntu 20.04+ and other GTK-based distributions
+
+## System Requirements
+
+### For Development
+- **Flutter SDK**: 3.0.0 or higher
+- **Dart SDK**: Included with Flutter
+- **Android Development**:
+  - Android Studio or VS Code with Flutter extension
+  - Android SDK 21-34
+  - Kotlin 1.9.0
+  - Gradle 8.1.0
+- **iOS Development** (macOS only):
+  - Xcode 12.0 or higher
+  - CocoaPods
+- **Linux Development**:
+  - CMake 3.10+
+  - GTK+ 3.0 development libraries
+  - pkg-config
+  - ninja-build or make
+
+### Installing Linux Dependencies
+On Ubuntu/Debian:
+```bash
+sudo apt-get update
+sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev
+```
+
+On Fedora:
+```bash
+sudo dnf install clang cmake ninja-build pkg-config gtk3-devel
+```
+
+## Getting Started
 
 ### Installation
 
@@ -85,8 +131,18 @@ The app comes with 10 common ingredients:
    ```
    flutter pub get
    ```
-4. Run the app:
-   ```
+4. Run the app on your platform:
+   ```bash
+   # Android
+   flutter run -d android
+
+   # iOS (macOS only)
+   flutter run -d ios
+
+   # Linux Desktop
+   flutter run -d linux
+
+   # Auto-detect connected device
    flutter run
    ```
 
@@ -136,8 +192,13 @@ diet_tracker_app/
 │   ├── services/
 │   │   └── database_helper.dart
 │   └── main.dart
-├── android/
-├── ios/
+├── android/              # Android platform configuration
+├── ios/                  # iOS platform configuration
+├── linux/                # Linux desktop configuration
+│   ├── CMakeLists.txt
+│   ├── main.cc
+│   ├── my_application.cc
+│   └── my_application.h
 └── pubspec.yaml
 ```
 
