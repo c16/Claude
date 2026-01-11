@@ -13,7 +13,7 @@ class SyslogWindow : public Gtk::Window {
     show_all_children();
   }
 
-  virtual ~SyslogWindow() {}
+  ~SyslogWindow() override = default;
 
  private:
   SyslogDialog syslog_dialog_;

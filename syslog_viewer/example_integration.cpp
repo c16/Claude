@@ -89,7 +89,7 @@ class TabbedApplication : public Gtk::Window {
         sigc::mem_fun(*this, &TabbedApplication::on_tab_changed));
   }
 
-  virtual ~TabbedApplication() {}
+  ~TabbedApplication() override = default;
 
  private:
   Gtk::Box main_box_;

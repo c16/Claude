@@ -19,7 +19,7 @@ void UdpListener::start(MessageCallback callback) {
     return;
   }
 
-  callback_ = callback;
+  callback_ = std::move(callback);
 
   // Create UDP socket
   socket_fd_ = socket(AF_INET, SOCK_DGRAM, 0);
@@ -35,7 +35,7 @@ void UdpListener::start(MessageCallback callback) {
   }
 
   // Bind to port
-  struct sockaddr_in server_addr;
+  struct sockaddr_in server_addr{};
   std::memset(&server_addr, 0, sizeof(server_addr));
   server_addr.sin_family = AF_INET;
   server_addr.sin_addr.s_addr = INADDR_ANY;
@@ -86,7 +86,7 @@ void UdpListener::set_port(int port) {
 
 void UdpListener::listen_thread() {
   char buffer[65536];
-  struct sockaddr_in client_addr;
+  struct sockaddr_in client_addr{};
   socklen_t client_len = sizeof(client_addr);
 
   while (running_) {
@@ -96,7 +96,7 @@ void UdpListener::listen_thread() {
 
     if (bytes_received < 0) {
       if (running_) {
-        std::cerr << "Error receiving data" << std::endl;
+        std::cerr << "Error receiving data\n";
       }
       break;
     }

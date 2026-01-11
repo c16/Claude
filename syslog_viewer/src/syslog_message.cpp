@@ -76,7 +76,7 @@ std::string SyslogMessage::facility_string() const {
 
 std::string SyslogMessage::timestamp_string() const {
   auto time_t_val = std::chrono::system_clock::to_time_t(timestamp);
-  std::tm tm_val;
+  std::tm tm_val{};
   localtime_r(&time_t_val, &tm_val);
 
   std::ostringstream oss;
