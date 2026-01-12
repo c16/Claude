@@ -119,6 +119,7 @@ class SyslogDialog : public Gtk::Box {
   // Message handling
   void on_message_received(const SyslogMessage& msg);
   void add_message_to_view(const SyslogMessage& msg);
+  void on_message_dispatch();  // No-argument wrapper for dispatcher
 
   // Filtering
   bool filter_func(const Gtk::TreeModel::const_iterator& iter);

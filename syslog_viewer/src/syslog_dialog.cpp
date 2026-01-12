@@ -158,7 +158,7 @@ SyslogDialog::SyslogDialog()
 
   // Set up message dispatcher
   message_dispatcher_.connect(
-      sigc::mem_fun(*this, &SyslogDialog::add_message_to_view));
+      sigc::mem_fun(*this, &SyslogDialog::on_message_dispatch));
 
   // Initial button states
   stop_button_.set_sensitive(false);
@@ -291,6 +291,31 @@ void SyslogDialog::on_message_received(const SyslogMessage& msg) {
 }
 
 void SyslogDialog::add_message_to_view(const SyslogMessage& msg) {
+  SyslogMessage local_msg;
+  {
+    std::lock_guard<std::mutex> lock(pending_mutex_);
+    local_msg = pending_message_;
+  }
+
+  auto row = *(tree_model_->append());
+  row[columns_.timestamp] = local_msg.timestamp_string();
+  row[columns_.severity] = local_msg.severity_string();
+  row[columns_.facility] = local_msg.facility_string();
+  row[columns_.source_ip] = local_msg.source_ip;
+  row[columns_.hostname] = local_msg.hostname;
+  row[columns_.application] = local_msg.application;
+  row[columns_.message] = local_msg.message;
+  row[columns_.severity_enum] = static_cast<int>(local_msg.severity);
+
+  // Auto-scroll to new message
+  auto adj = scrolled_window_.get_vadjustment();
+  adj->set_value(adj->get_upper() - adj->get_page_size());
+
+  update_status();
+}
+
+void SyslogDialog::on_message_dispatch() {
+  // Wrapper for dispatcher - reads from pending_message_
   SyslogMessage local_msg;
   {
     std::lock_guard<std::mutex> lock(pending_mutex_);
