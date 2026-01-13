@@ -23,8 +23,9 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _createDB,
+      onUpgrade: _upgradeDB,
     );
   }
 
@@ -56,7 +57,8 @@ class DatabaseHelper {
       CREATE TABLE meals (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
-        description TEXT
+        description TEXT,
+        last_used TEXT
       )
     ''');
 
@@ -85,6 +87,13 @@ class DatabaseHelper {
 
     // Seed some default ingredients
     await _seedDefaultData(db);
+  }
+
+  Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // Add last_used column to meals table
+      await db.execute('ALTER TABLE meals ADD COLUMN last_used TEXT');
+    }
   }
 
   Future<void> _seedDefaultData(Database db) async {
@@ -164,7 +173,14 @@ class DatabaseHelper {
 
   Future<List<Meal>> getAllMeals() async {
     final db = await database;
-    final result = await db.query('meals', orderBy: 'name ASC');
+    // Order by last_used DESC (most recent first), with NULL values last, then by name ASC
+    final result = await db.rawQuery('''
+      SELECT * FROM meals
+      ORDER BY
+        CASE WHEN last_used IS NULL THEN 1 ELSE 0 END,
+        last_used DESC,
+        name ASC
+    ''');
 
     List<Meal> meals = [];
     for (var mealMap in result) {
@@ -215,6 +231,15 @@ class DatabaseHelper {
   // Daily log operations
   Future<int> insertDailyLog(DailyLog log) async {
     final db = await database;
+
+    // Update the last_used timestamp for the meal
+    await db.update(
+      'meals',
+      {'last_used': DateTime.now().toIso8601String()},
+      where: 'id = ?',
+      whereArgs: [log.mealId],
+    );
+
     return await db.insert('daily_logs', log.toMap());
   }
 
