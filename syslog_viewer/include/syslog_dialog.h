@@ -143,6 +143,7 @@ class SyslogDialog : public Gtk::Box {
   void load_config();
   void save_config();
   std::string get_config_path() const;
+  bool loading_config_;
 };
 
 #endif  // SYSLOG_DIALOG_H

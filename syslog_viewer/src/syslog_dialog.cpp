@@ -28,7 +28,8 @@ SyslogDialog::SyslogDialog()
       debug_check_("DEBUG"),
       status_label_("Not listening"),
       listener_(std::make_unique<UdpListener>(514)),
-      file_logging_enabled_(false) {
+      file_logging_enabled_(false),
+      loading_config_(false) {
   set_margin_top(5);
   set_margin_bottom(5);
   set_margin_start(5);
@@ -171,6 +172,7 @@ SyslogDialog::SyslogDialog()
 }
 
 SyslogDialog::~SyslogDialog() {
+  save_config();
   stop_listening();
   if (log_file_stream_.is_open()) {
     log_file_stream_.close();
@@ -277,7 +279,10 @@ void SyslogDialog::on_export_clicked() {
   }
 }
 
-void SyslogDialog::on_filter_changed() { filtered_model_->refilter(); }
+void SyslogDialog::on_filter_changed() {
+  filtered_model_->refilter();
+  save_config();
+}
 
 void SyslogDialog::on_message_received(const SyslogMessage& msg) {
   {
@@ -526,10 +531,13 @@ std::string SyslogDialog::get_config_path() const {
 }
 
 void SyslogDialog::load_config() {
+  loading_config_ = true;
+
   std::string config_path = get_config_path();
   std::ifstream config_file(config_path);
 
   if (!config_file.is_open()) {
+    loading_config_ = false;
     return;  // No config file, use defaults
   }
 
@@ -556,14 +564,36 @@ void SyslogDialog::load_config() {
         } catch (...) {
           // Invalid port value, ignore
         }
+      } else if (key == "filter_emergency") {
+        emergency_check_.set_active(value == "1");
+      } else if (key == "filter_alert") {
+        alert_check_.set_active(value == "1");
+      } else if (key == "filter_critical") {
+        critical_check_.set_active(value == "1");
+      } else if (key == "filter_error") {
+        error_check_.set_active(value == "1");
+      } else if (key == "filter_warning") {
+        warning_check_.set_active(value == "1");
+      } else if (key == "filter_notice") {
+        notice_check_.set_active(value == "1");
+      } else if (key == "filter_info") {
+        info_check_.set_active(value == "1");
+      } else if (key == "filter_debug") {
+        debug_check_.set_active(value == "1");
       }
     }
   }
 
   config_file.close();
+  loading_config_ = false;
 }
 
 void SyslogDialog::save_config() {
+  // Don't save while loading config
+  if (loading_config_) {
+    return;
+  }
+
   std::string config_path = get_config_path();
   std::ofstream config_file(config_path);
 
@@ -573,6 +603,16 @@ void SyslogDialog::save_config() {
 
   config_file << "# Syslog Viewer Configuration\n";
   config_file << "port=" << static_cast<int>(port_spin_.get_value()) << "\n";
+
+  // Save filter checkbox states
+  config_file << "filter_emergency=" << (emergency_check_.get_active() ? "1" : "0") << "\n";
+  config_file << "filter_alert=" << (alert_check_.get_active() ? "1" : "0") << "\n";
+  config_file << "filter_critical=" << (critical_check_.get_active() ? "1" : "0") << "\n";
+  config_file << "filter_error=" << (error_check_.get_active() ? "1" : "0") << "\n";
+  config_file << "filter_warning=" << (warning_check_.get_active() ? "1" : "0") << "\n";
+  config_file << "filter_notice=" << (notice_check_.get_active() ? "1" : "0") << "\n";
+  config_file << "filter_info=" << (info_check_.get_active() ? "1" : "0") << "\n";
+  config_file << "filter_debug=" << (debug_check_.get_active() ? "1" : "0") << "\n";
 
   config_file.close();
 }
