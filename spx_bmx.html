@@ -319,10 +319,10 @@ function stopEngine() {
 }
 
 // ── THREE.JS ───────────────────────────────────────────────────────────────
-const renderer = new THREE.WebGLRenderer({canvas: document.getElementById('c'), antialias: true, alpha: true});
+const renderer = new THREE.WebGLRenderer({canvas: document.getElementById('c'), antialias: true});
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.setClearColor(0x000000, 0);
+renderer.setClearColor(0x000308);
 renderer.toneMapping = THREE.ReinhardToneMapping;
 renderer.toneMappingExposure = 1.4;
 
@@ -369,11 +369,17 @@ window.addEventListener('resize', () => {
 });
 
 // ── PARALLAX BACKGROUND LAYERS ─────────────────────────────────────────────
-// Sky follows camera exactly (z=-18, behind everything)
-const skyPlane = new THREE.Mesh(
-  new THREE.PlaneGeometry(1200, 400),
-  new THREE.MeshBasicMaterial({color: 0x000208, transparent:true, opacity:0.0})
-);
+// Sky gradient plane — always fills the viewport, follows camera
+const _skyGeo = new THREE.PlaneGeometry(1200, 400, 1, 4);
+const _skyCols = new Float32Array(_skyGeo.attributes.position.count * 3);
+for (let i = 0; i < _skyGeo.attributes.position.count; i++) {
+  const t = (_skyGeo.attributes.position.getY(i) + 200) / 400; // 0=bottom 1=top
+  _skyCols[i*3]   = 0.0;
+  _skyCols[i*3+1] = 0.02 + t * 0.05;
+  _skyCols[i*3+2] = 0.03 + t * 0.08;
+}
+_skyGeo.setAttribute('color', new THREE.Float32BufferAttribute(_skyCols, 3));
+const skyPlane = new THREE.Mesh(_skyGeo, new THREE.MeshBasicMaterial({vertexColors: true}));
 skyPlane.position.z = -18;
 scene.add(skyPlane);
 
@@ -1576,7 +1582,7 @@ function animate() {
     }
   }
 
-  composer.render();
+  try { composer.render(); } catch(e) { renderer.render(scene, camera); }
 
   // Air price label — must run after render so camera matrices are current
   updateAirPrice();
