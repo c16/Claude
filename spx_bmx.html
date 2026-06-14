@@ -283,7 +283,7 @@ function scheduleClicks(vx, onGround) {
     src.buffer = buf;
     const bp1 = audioCtx.createBiquadFilter(); bp1.type='bandpass'; bp1.frequency.value=800; bp1.Q.value=3;
     const bp2 = audioCtx.createBiquadFilter(); bp2.type='bandpass'; bp2.frequency.value=2200; bp2.Q.value=2;
-    const g = audioCtx.createGain(); g.gain.value = Math.min(0.5, 0.1 + vx*0.02);
+    const g = audioCtx.createGain(); g.gain.value = Math.min(0.12, 0.025 + vx*0.005);
     src.connect(bp1); bp1.connect(g);
     src.connect(bp2); bp2.connect(g);
     g.connect(audioCtx.destination);
@@ -346,12 +346,12 @@ function updateEngine(vx, onGround) {
   const t = audioCtx.currentTime;
   const sp = Math.min(vx / MAX_SPEED, 1.4);
   engineOsc.frequency.linearRampToValueAtTime(80 + vx*18, t+0.04);
-  engineGain.gain.linearRampToValueAtTime(onGround ? 0.012 + vx*0.0025 : 0, t+0.04);
-  // Wind: present always, stronger at speed and noticeably louder in the air
-  windGain.gain.linearRampToValueAtTime(0.015 + sp*0.06 + (onGround?0:0.05), t+0.08);
+  engineGain.gain.linearRampToValueAtTime(onGround ? 0.005 + vx*0.0010 : 0, t+0.04);
+  // Wind: present always, stronger at speed and louder in the air (kept subtle)
+  windGain.gain.linearRampToValueAtTime(0.008 + sp*0.025 + (onGround?0:0.02), t+0.08);
   windFlt.frequency.linearRampToValueAtTime(400 + sp*900, t+0.08);
-  // Tyre roll only on the ground
-  rollGain.gain.linearRampToValueAtTime(onGround ? 0.02 + sp*0.07 : 0.0, t+0.06);
+  // Tyre roll only on the ground (kept subtle so the music leads)
+  rollGain.gain.linearRampToValueAtTime(onGround ? 0.01 + sp*0.03 : 0.0, t+0.06);
   rollFlt.frequency.linearRampToValueAtTime(900 + sp*1600, t+0.06);
   scheduleClicks(vx, onGround);
 }
@@ -425,7 +425,7 @@ function scheduleMusicStep(s, t) {
 function startMusic() {
   if (!audioCtx || musicTimer) return;
   musicGain = audioCtx.createGain();
-  musicGain.gain.value = 0.10;                            // sits under the SFX
+  musicGain.gain.value = 0.22;                            // theme leads the mix
   musicGain.connect(audioCtx.destination);
   musicStep = 0;
   musicNextTime = audioCtx.currentTime + 0.1;
@@ -1559,9 +1559,10 @@ function updateCamera() {
   sun.target.updateMatrixWorld();
 
   // Scroll the sky: keep the dome around the camera and spin it with travel
+  // (clouds drift backwards relative to the rider as they move forwards)
   if (skyDome) {
     skyDome.position.copy(camera.position);
-    skyDome.rotation.y = -GEN.x * 0.0011 - performance.now() * 0.000006;
+    skyDome.rotation.y = GEN.x * 0.0011 + performance.now() * 0.000006;
   }
 }
 
