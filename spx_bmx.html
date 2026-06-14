@@ -412,46 +412,47 @@ function stopEngine() {
   setTimeout(() => { try{engineOsc.stop();}catch(e){} engineOsc=null; engineGain=null; }, 400);
 }
 
-// ── STEAM · Peter Gabriel — 8-bit chiptune (Eb minor, 108 BPM) ──────────────
-// Eb minor · 108 BPM · verse: Ebm7–Ab/Eb–Absus4–Ab · chorus: B–Gb/Bb–Db–Ebm7
+// ── STEAM · Peter Gabriel — chiptune from actual MIDI ────────────────────────
+// BPM 112 (exact from MIDI file), key Eb minor
+// Bass: Eb3/Db3 alternation (Track 6 of MIDI)
+// Lead: Db4↔C4 chromatic riff (Track 3) + Db5/C5 stabs (Track 1)
+// Accent: E5 off-beat stab at "and" of beats 2 & 4 (Track 20)
 let musicGain = null, musicTimer = null, musicStep = 0, musicNextTime = 0;
 const N_ = (n) => 440 * Math.pow(2, (n - 69) / 12);   // MIDI note → Hz
 
-// Bass roots only (arp unused — melody driven by STEAM_MELODY)
-// 8 chords × 8 steps = 64 sixteenths = 4 bars
-// A-section (verse): Ebm7 Ebm7 Ab/Eb Ab
-// B-section (chorus): B  Gb/Bb  Db  Ebm7
+// Bass alternates Eb3(51) / Db3(49) to match the actual MIDI bass groove
+// Harmony: Ebm7 throughout, with Ab on slot 3 and 7
 const CHORDS = [
-  { bass: 51, arp: [63, 66, 70] },  // Ebm7  (Eb3)
-  { bass: 51, arp: [63, 66, 70] },  // Ebm7  (Eb3)
-  { bass: 51, arp: [56, 60, 63] },  // Ab/Eb (Eb3 bass, Ab harmony)
-  { bass: 56, arp: [56, 60, 63] },  // Ab    (Ab3)
-  { bass: 59, arp: [63, 66, 71] },  // B maj (B3 — bVI chord, chorus)
-  { bass: 58, arp: [66, 70, 73] },  // Gb/Bb (Bb3 bass)
-  { bass: 49, arp: [61, 65, 68] },  // Db    (Db3)
-  { bass: 51, arp: [63, 66, 70] },  // Ebm7  (Eb3)
+  { bass: 51, arp: [63, 66, 70] },  // Ebm7 (Eb3)
+  { bass: 49, arp: [61, 65, 68] },  // Db   (Db3 — b7 bass move)
+  { bass: 51, arp: [63, 66, 70] },  // Ebm7 (Eb3)
+  { bass: 56, arp: [56, 60, 63] },  // Ab   (Ab3)
+  { bass: 51, arp: [63, 66, 70] },  // Ebm7 (Eb3)
+  { bass: 49, arp: [61, 65, 68] },  // Db   (Db3)
+  { bass: 51, arp: [63, 66, 70] },  // Ebm7 (Eb3)
+  { bass: 56, arp: [56, 60, 63] },  // Ab   (Ab3)
 ];
 const STEPS_PER_CHORD = 8;
 const TOTAL_STEPS = CHORDS.length * STEPS_PER_CHORD;   // 64 steps = 4 bars
-const BPM  = 108;
-const STEP_DUR = 60 / BPM / 4;                          // sixteenth-note duration
+const BPM  = 112;
+const STEP_DUR = 60 / BPM / 4;
 
-// Steam main riff — Eb minor pentatonic (Eb Gb Ab Bb Db)
-// Verse: ascending Eb→Gb→Ab→Bb→Db then descend Db→Bb→Ab→Gb
-// Chorus: horn-stab pattern Eb5→Db5→Gb4→Eb5 (b.VI hit, then resolve)
+// MIDI-sourced melody — 64 sixteenth notes (4 bars)
+// A-section (bars 1-2): actual Db4/C4 riff from Track 3, E5 stab from Track 20
+// B-section (bars 3-4): Db5/C5 chord top-notes from Track 1 + E5 accents
 const STEAM_MELODY = [
-  // Bar 1 (Ebm7) — iconic ascending pentatonic riff
-  63, null, 66, null, 68, null, 70, null,
-  73, null, 70,   68, null, null, 66, null,
-  // Bar 2 (Ab/Eb → Ab) — variation: push up to Db, breathe, resolve
-  63, null, 66,   68, 70, null, 73, null,
-  70, null, 68, null, 63, null, null, null,
-  // Bar 3 (B → Gb/Bb) — chorus horn stabs: Eb5 Db5 Gb4 Eb5
-  75, null, 73, null, 66, null, 75, null,
-  73,   70, null, 66, null, 70, null, null,
-  // Bar 4 (Db → Ebm7) — walk through Db, rise back up for the loop
-  61, null, 63, null, 66,   68,   70, null,
-  63, null, 66, null, 70,   73, null, null,
+  // Bar 1 — Db4(61) riff + E5(76) off-beat accent
+  61, null, null, null,  76, null,  60, null,
+  61, null, null, null,  76, null,  61, null,
+  // Bar 2 — riff continues + accents
+  null, null,  60, null,  76, null, null, null,
+  null, null, null, null,  76, null, null, null,
+  // Bar 3 — B: Db5(73) & C5(72) stabs (Track 1 top notes) + E5 accents
+  73, null, null, null,  76, null, null, null,
+  72, null, null, null,  76, null, null, null,
+  // Bar 4 — B: held stab pattern
+  73, null, null, null,  73, null, null, null,
+  72, null, null, null,  72, null, null, null,
 ];
 
 function chipVoice(freq, t, dur, type, vol, detune) {
@@ -484,13 +485,16 @@ function chipDrum(t, kick) {
 function scheduleMusicStep(s, t) {
   const chord = CHORDS[Math.floor(s / STEPS_PER_CHORD) % CHORDS.length];
   const local = s % STEPS_PER_CHORD;
-  // Bass — deep square pulse on 1 & 3, octave bounce on 2 & 4
+  // Bass — Eb3/Db3 alternating groove (matching MIDI Track 6)
   if (local % 4 === 0)      chipVoice(N_(chord.bass),    t, STEP_DUR*1.9, 'square', 0.22, -10);
   else if (local % 4 === 2) chipVoice(N_(chord.bass+12), t, STEP_DUR*0.7, 'square', 0.10, -10);
-  // Steam lead — sawtooth, short attack for punchy organ/synth feel
+  // Lead melody — sawtooth; longer sustain on the Db4/C4 riff notes
   const note = STEAM_MELODY[s % STEAM_MELODY.length];
-  if (note !== null) chipVoice(N_(note), t, STEP_DUR*0.75, 'sawtooth', 0.17, +5);
-  // Funk drums: kick on 1 & 3, snare on 2 & 4, closed hi-hat on 8ths
+  if (note !== null) {
+    const isAccent = (note === 76);  // E5 off-beat stabs are short and punchy
+    chipVoice(N_(note), t, isAccent ? STEP_DUR*0.35 : STEP_DUR*1.4, 'sawtooth', isAccent ? 0.14 : 0.18, +5);
+  }
+  // Funk drums: kick on beats 1 & 3, snare on 2 & 4, 8th hi-hats
   if (local === 0 || local === 4) chipDrum(t, true);
   if (local === 2 || local === 6) chipDrum(t, false);
   if (local % 2 === 1)            chipDrum(t, false);
