@@ -412,47 +412,25 @@ function stopEngine() {
   setTimeout(() => { try{engineOsc.stop();}catch(e){} engineOsc=null; engineGain=null; }, 400);
 }
 
-// ── STEAM · Peter Gabriel — chiptune from actual MIDI ────────────────────────
-// BPM 112 (exact from MIDI file), key Eb minor
-// Bass: Eb3/Db3 alternation (Track 6 of MIDI)
-// Lead: Db4↔C4 chromatic riff (Track 3) + Db5/C5 stabs (Track 1)
-// Accent: E5 off-beat stab at "and" of beats 2 & 4 (Track 20)
+// ── STEAM · Peter Gabriel — faithful chiptune ────────────────────────────────
+// 112 BPM, Eb minor; 16 sixteenth-notes = 1 bar, 32-step (2-bar) loop
+// Tracks used: T6=bass groove, T7=chord stabs, T20=E5/C6 hook, T3=Db4/C4 riff
+// T11=kick, T12=snare, T13=hi-hat
 let musicGain = null, musicTimer = null, musicStep = 0, musicNextTime = 0;
 const N_ = (n) => 440 * Math.pow(2, (n - 69) / 12);   // MIDI note → Hz
 
-// Bass alternates Eb3(51) / Db3(49) to match the actual MIDI bass groove
-// Harmony: Ebm7 throughout, with Ab on slot 3 and 7
-const CHORDS = [
-  { bass: 51, arp: [63, 66, 70] },  // Ebm7 (Eb3)
-  { bass: 49, arp: [61, 65, 68] },  // Db   (Db3 — b7 bass move)
-  { bass: 51, arp: [63, 66, 70] },  // Ebm7 (Eb3)
-  { bass: 56, arp: [56, 60, 63] },  // Ab   (Ab3)
-  { bass: 51, arp: [63, 66, 70] },  // Ebm7 (Eb3)
-  { bass: 49, arp: [61, 65, 68] },  // Db   (Db3)
-  { bass: 51, arp: [63, 66, 70] },  // Ebm7 (Eb3)
-  { bass: 56, arp: [56, 60, 63] },  // Ab   (Ab3)
-];
-const STEPS_PER_CHORD = 8;
-const TOTAL_STEPS = CHORDS.length * STEPS_PER_CHORD;   // 64 steps = 4 bars
-const BPM  = 112;
-const STEP_DUR = 60 / BPM / 4;
+const BPM       = 112;
+const STEP_DUR  = 60 / BPM / 4;   // 16th note ≈ 0.134 s
+const TOTAL_STEPS = 32;            // 2-bar loop
 
-// MIDI-sourced melody — 64 sixteenth notes (4 bars)
-// A-section (bars 1-2): actual Db4/C4 riff from Track 3, E5 stab from Track 20
-// B-section (bars 3-4): Db5/C5 chord top-notes from Track 1 + E5 accents
-const STEAM_MELODY = [
-  // Bar 1 — Db4(61) riff + E5(76) off-beat accent
-  61, null, null, null,  76, null,  60, null,
-  61, null, null, null,  76, null,  61, null,
-  // Bar 2 — riff continues + accents
-  null, null,  60, null,  76, null, null, null,
-  null, null, null, null,  76, null, null, null,
-  // Bar 3 — B: Db5(73) & C5(72) stabs (Track 1 top notes) + E5 accents
-  73, null, null, null,  76, null, null, null,
-  72, null, null, null,  76, null, null, null,
-  // Bar 4 — B: held stab pattern
-  73, null, null, null,  73, null, null, null,
-  72, null, null, null,  72, null, null, null,
+// Bass groove: Eb3(51)=root, Db3(49)=b7 — MIDI Track 6 exact pattern
+const BASS_PAT = [51,49,null,null, 51,null,49,51, null,null,null,null, null,null,49,49];
+// Lead hook (Track 20): E5(76) on beats 2 & 4; C6(84) on beat 3½
+const LEAD_PAT = [null,null,null,null, 76,null,null,null, null,null,84,null, 76,null,null,null];
+// 2-bar chromatic riff (Track 3): Db4(61) / C4(60)
+const RIFF = [
+  61,null,null,null, null,60,null,61, null,null,null,null, null,61,null,null,   // bar A
+  null,null,60,61,   null,null,null,null, null,null,null,null, null,null,null,61  // bar B
 ];
 
 function chipVoice(freq, t, dur, type, vol, detune) {
@@ -462,42 +440,62 @@ function chipVoice(freq, t, dur, type, vol, detune) {
   if (detune) o.detune.value = detune;
   o.connect(g); g.connect(musicGain);
   g.gain.setValueAtTime(0.0001, t);
-  g.gain.linearRampToValueAtTime(vol, t + 0.008);       // snappy 8-bit attack
+  g.gain.linearRampToValueAtTime(vol, t + 0.008);
   g.gain.setValueAtTime(vol, t + dur * 0.7);
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   o.start(t); o.stop(t + dur + 0.02);
+  o.onended = () => { o.disconnect(); g.disconnect(); };
 }
 
-function chipDrum(t, kick) {
-  const dur = kick ? 0.12 : 0.05;
-  const buf = audioCtx.createBuffer(1, Math.floor(audioCtx.sampleRate*dur), audioCtx.sampleRate);
+function chipDrum(t, type) {
+  const isKick = type === 'kick' || type === true;
+  const isHat  = type === 'hat';
+  const dur = isKick ? 0.12 : isHat ? 0.018 : 0.05;
+  const buf = audioCtx.createBuffer(1, Math.ceil(audioCtx.sampleRate * dur), audioCtx.sampleRate);
   const d = buf.getChannelData(0);
-  for (let i=0;i<d.length;i++) d[i] = (Math.random()*2-1) * Math.pow(1 - i/d.length, kick?3:1.5);
+  const dc = isKick ? 3 : isHat ? 8 : 1.5;
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random()*2-1) * Math.pow(1 - i/d.length, dc);
   const src = audioCtx.createBufferSource(); src.buffer = buf;
   const flt = audioCtx.createBiquadFilter();
-  flt.type = kick ? 'lowpass' : 'highpass'; flt.frequency.value = kick ? 160 : 5500;
-  const g = audioCtx.createGain(); g.gain.value = kick ? 0.5 : 0.12;
+  flt.type = isKick ? 'lowpass' : 'highpass';
+  flt.frequency.value = isKick ? 160 : isHat ? 9000 : 5500;
+  const g = audioCtx.createGain();
+  g.gain.value = isKick ? 0.55 : isHat ? 0.06 : 0.12;
   src.connect(flt); flt.connect(g); g.connect(musicGain);
   src.start(t); src.stop(t + dur);
-  if (kick) chipVoice(70, t, 0.12, 'sine', 0.5);        // kick body
+  src.onended = () => { src.disconnect(); flt.disconnect(); g.disconnect(); };
+  if (isKick) chipVoice(70, t, 0.10, 'sine', 0.55);
 }
 
 function scheduleMusicStep(s, t) {
-  const chord = CHORDS[Math.floor(s / STEPS_PER_CHORD) % CHORDS.length];
-  const local = s % STEPS_PER_CHORD;
-  // Bass — Eb3/Db3 alternating groove (matching MIDI Track 6)
-  if (local % 4 === 0)      chipVoice(N_(chord.bass),    t, STEP_DUR*1.9, 'square', 0.22, -10);
-  else if (local % 4 === 2) chipVoice(N_(chord.bass+12), t, STEP_DUR*0.7, 'square', 0.10, -10);
-  // Lead melody — sawtooth; longer sustain on the Db4/C4 riff notes
-  const note = STEAM_MELODY[s % STEAM_MELODY.length];
-  if (note !== null) {
-    const isAccent = (note === 76);  // E5 off-beat stabs are short and punchy
-    chipVoice(N_(note), t, isAccent ? STEP_DUR*0.35 : STEP_DUR*1.4, 'sawtooth', isAccent ? 0.14 : 0.18, +5);
+  const bar  = Math.floor(s / 16) % 2;   // 0 (bar A) or 1 (bar B)
+  const beat = s % 16;                    // 0..15 within bar
+
+  // Bass groove — long sustain on root, short on b7
+  const bn = BASS_PAT[beat];
+  if (bn !== null)
+    chipVoice(N_(bn), t, bn === 51 ? STEP_DUR * 3.0 : STEP_DUR * 0.9, 'square', 0.30, -8);
+
+  // Chord stabs: Db4(61) + Bb3(58) on even steps 0–8 of bar A (Track 7)
+  if (bar === 0 && beat <= 8 && beat % 2 === 0) {
+    chipVoice(N_(61), t, STEP_DUR * 0.38, 'square', 0.13, +7);
+    chipVoice(N_(58), t, STEP_DUR * 0.38, 'square', 0.08, -5);
   }
-  // Funk drums: kick on beats 1 & 3, snare on 2 & 4, 8th hi-hats
-  if (local === 0 || local === 4) chipDrum(t, true);
-  if (local === 2 || local === 6) chipDrum(t, false);
-  if (local % 2 === 1)            chipDrum(t, false);
+
+  // Lead hook: E5/C6 synth stabs (Track 20)
+  const ln = LEAD_PAT[beat];
+  if (ln !== null)
+    chipVoice(N_(ln), t, ln === 84 ? STEP_DUR * 0.42 : STEP_DUR * 0.52, 'sawtooth', 0.22, 0);
+
+  // Chromatic riff (2-bar pattern, Track 3)
+  const rn = RIFF[bar * 16 + beat];
+  if (rn !== null)
+    chipVoice(N_(rn), t, STEP_DUR * 1.7, 'triangle', 0.14, +3);
+
+  // Drums — kick on 0,7,8,10,14; snare on 4,12; closed hi-hat on even steps
+  if ([0,7,8,10,14].indexOf(beat) >= 0) chipDrum(t, 'kick');
+  if (beat === 4 || beat === 12)         chipDrum(t, 'snare');
+  if (beat % 2 === 0)                    chipDrum(t, 'hat');
 }
 
 function startMusic() {
@@ -1400,9 +1398,8 @@ function physicsStep(dt) {
         sfxHop(); GEN.hops++;
       }
     } else if (!GEN._somersaulting) {
-      // Already airborne: start somersault
+      // Already airborne: start (or resume) somersault — keep accumulated rotation
       GEN._somersaulting = true;
-      GEN.somersaultRot = 0; // reset counter when spin starts
       GEN.angularV = 5.0;
       sfxSpin();
     }
