@@ -412,27 +412,48 @@ function stopEngine() {
   setTimeout(() => { try{engineOsc.stop();}catch(e){} engineOsc=null; engineGain=null; }, 400);
 }
 
-// ── 80s 8-BIT THEME TUNE ─────────────────────────────────────────────────────
-// Classic vi–IV–I–V progression, square-wave arpeggio + pulse bass + noise drums.
+// ── STEAM · Peter Gabriel — 8-bit chiptune arrangement ──────────────────────
+// Key: D minor · 104 BPM · sawtooth lead + pulse bass + funk kick/hats
 let musicGain = null, musicTimer = null, musicStep = 0, musicNextTime = 0;
 const N_ = (n) => 440 * Math.pow(2, (n - 69) / 12);   // MIDI note → Hz
-// Each chord: bass root (MIDI) + three arpeggio tones (MIDI)
+
+// Harmony: Dm–Bb–F–C (A-section) then Dm–Gm–Bb–C (B-section)
 const CHORDS = [
-  // A-section — vi–IV–I–V (melancholic 80s minor)
-  { bass: 45, arp: [57, 60, 64] },  // Am
-  { bass: 41, arp: [53, 57, 60] },  // F
+  { bass: 50, arp: [62, 65, 69] },  // Dm
+  { bass: 46, arp: [58, 62, 65] },  // Bb
+  { bass: 53, arp: [65, 69, 72] },  // F
   { bass: 48, arp: [60, 64, 67] },  // C
-  { bass: 43, arp: [55, 59, 62] },  // G
-  // B-section — I–vi–IV–V (bright classic pop)
+  { bass: 50, arp: [62, 65, 69] },  // Dm
+  { bass: 55, arp: [55, 58, 62] },  // Gm
+  { bass: 46, arp: [58, 62, 65] },  // Bb
   { bass: 48, arp: [60, 64, 67] },  // C
-  { bass: 45, arp: [57, 60, 64] },  // Am
-  { bass: 41, arp: [53, 57, 60] },  // F
-  { bass: 43, arp: [55, 59, 62] },  // G
 ];
 const STEPS_PER_CHORD = 8;
-const TOTAL_STEPS = CHORDS.length * STEPS_PER_CHORD;   // 64 sixteenths = 4 bars
-const BPM = 132;
-const STEP_DUR = 60 / BPM / 4;                          // sixteenth-note length
+const TOTAL_STEPS = CHORDS.length * STEPS_PER_CHORD;   // 64 steps = 4 bars
+const BPM  = 104;
+const STEP_DUR = 60 / BPM / 4;                          // sixteenth-note duration
+
+// Steam main riff — 64 sixteenth notes, null = rest
+// A-section: ascending Dm motif + descending runs
+// B-section: upper-octave echo for climax
+const STEAM_MELODY = [
+  // Bar 1 (A) — ascending Dm
+  62, null, 65, null, 67, null, 69, null,
+  // Bar 1 cont — descend, breathe
+  67,   65,   62, null,   60,   62, null, null,
+  // Bar 2 (A) — rhythmic variation with chromatic run
+  62, null, 65, null,   69,   67,   65,   64,
+  // Bar 2 tail — resolve and land
+  62,   60,   62,   65,   69, null, null, null,
+  // Bar 3 (B) — upper octave echo of bar 1
+  74, null, 77, null, 79, null, 81, null,
+  // Bar 3 cont — descend high register
+  79,   77,   74, null,   72,   74, null, null,
+  // Bar 4 (B) — chromatic colour, build
+  74, null, 77, null,   81,   79,   77,   76,
+  // Bar 4 tail — big resolve back to root
+  74,   72,   74,   77,   81, null, null, null,
+];
 
 function chipVoice(freq, t, dur, type, vol, detune) {
   const o = audioCtx.createOscillator();
@@ -464,20 +485,15 @@ function chipDrum(t, kick) {
 function scheduleMusicStep(s, t) {
   const chord = CHORDS[Math.floor(s / STEPS_PER_CHORD) % CHORDS.length];
   const local = s % STEPS_PER_CHORD;
-  const section = Math.floor((s % TOTAL_STEPS) / (TOTAL_STEPS / 2)); // 0=A, 1=B
-  // Bass — pulse on the beat (every 4 sixteenths) plus an off-beat octave
-  if (local % 4 === 0)      chipVoice(N_(chord.bass),    t, STEP_DUR*1.6, 'square', 0.22, -6);
-  else if (local % 4 === 2) chipVoice(N_(chord.bass+12), t, STEP_DUR*0.8, 'square', 0.12, -6);
-  // Lead arpeggio — ascending in A-section, descending in B-section
-  let tone;
-  if (section === 0) {
-    tone = chord.arp[local % chord.arp.length] + (local >= 4 ? 12 : 0);
-  } else {
-    tone = chord.arp[2 - (local % chord.arp.length)] + (local < 4 ? 12 : 0);
-  }
-  chipVoice(N_(tone), t, STEP_DUR*0.9, 'square', 0.14, +4);
-  // Drums — kick on 0 & 4, hats on the off-sixteenths
+  // Bass — square pulse on beats 1 & 3, off-beat octave on 2 & 4
+  if (local % 4 === 0)      chipVoice(N_(chord.bass),    t, STEP_DUR*1.8, 'square', 0.20, -8);
+  else if (local % 4 === 2) chipVoice(N_(chord.bass+12), t, STEP_DUR*0.8, 'square', 0.11, -8);
+  // Steam lead — sawtooth for that 90s synth growl
+  const note = STEAM_MELODY[s % STEAM_MELODY.length];
+  if (note !== null) chipVoice(N_(note), t, STEP_DUR*0.82, 'sawtooth', 0.18, +3);
+  // Funk drums: kick beats 1 & 3, snare beats 2 & 4, 8th-note hats
   if (local === 0 || local === 4) chipDrum(t, true);
+  if (local === 2 || local === 6) chipDrum(t, false);
   if (local % 2 === 1)            chipDrum(t, false);
 }
 
