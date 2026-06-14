@@ -365,6 +365,87 @@ function stopEngine() {
   setTimeout(() => { try{engineOsc.stop();}catch(e){} engineOsc=null; engineGain=null; }, 400);
 }
 
+// ── 80s 8-BIT THEME TUNE ─────────────────────────────────────────────────────
+// Classic vi–IV–I–V progression, square-wave arpeggio + pulse bass + noise drums.
+let musicGain = null, musicTimer = null, musicStep = 0, musicNextTime = 0;
+const N_ = (n) => 440 * Math.pow(2, (n - 69) / 12);   // MIDI note → Hz
+// Each chord: bass root (MIDI) + three arpeggio tones (MIDI)
+const CHORDS = [
+  { bass: 45, arp: [57, 60, 64] },  // Am
+  { bass: 41, arp: [53, 57, 60] },  // F
+  { bass: 48, arp: [60, 64, 67] },  // C
+  { bass: 43, arp: [55, 59, 62] },  // G
+];
+const STEPS_PER_CHORD = 8;
+const TOTAL_STEPS = CHORDS.length * STEPS_PER_CHORD;   // 32 sixteenths = 2 bars
+const BPM = 132;
+const STEP_DUR = 60 / BPM / 4;                          // sixteenth-note length
+
+function chipVoice(freq, t, dur, type, vol, detune) {
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = type; o.frequency.value = freq;
+  if (detune) o.detune.value = detune;
+  o.connect(g); g.connect(musicGain);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(vol, t + 0.008);       // snappy 8-bit attack
+  g.gain.setValueAtTime(vol, t + dur * 0.7);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.start(t); o.stop(t + dur + 0.02);
+}
+
+function chipDrum(t, kick) {
+  const dur = kick ? 0.12 : 0.05;
+  const buf = audioCtx.createBuffer(1, Math.floor(audioCtx.sampleRate*dur), audioCtx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i=0;i<d.length;i++) d[i] = (Math.random()*2-1) * Math.pow(1 - i/d.length, kick?3:1.5);
+  const src = audioCtx.createBufferSource(); src.buffer = buf;
+  const flt = audioCtx.createBiquadFilter();
+  flt.type = kick ? 'lowpass' : 'highpass'; flt.frequency.value = kick ? 160 : 5500;
+  const g = audioCtx.createGain(); g.gain.value = kick ? 0.5 : 0.12;
+  src.connect(flt); flt.connect(g); g.connect(musicGain);
+  src.start(t); src.stop(t + dur);
+  if (kick) chipVoice(70, t, 0.12, 'sine', 0.5);        // kick body
+}
+
+function scheduleMusicStep(s, t) {
+  const chord = CHORDS[Math.floor(s / STEPS_PER_CHORD) % CHORDS.length];
+  const local = s % STEPS_PER_CHORD;
+  // Bass — pulse on the beat (every 4 sixteenths) plus an off-beat octave
+  if (local % 4 === 0)      chipVoice(N_(chord.bass),    t, STEP_DUR*1.6, 'square', 0.22, -6);
+  else if (local % 4 === 2) chipVoice(N_(chord.bass+12), t, STEP_DUR*0.8, 'square', 0.12, -6);
+  // Lead arpeggio — climbs the chord, jumping an octave in the back half
+  const tone = chord.arp[local % chord.arp.length] + (local >= 4 ? 12 : 0);
+  chipVoice(N_(tone), t, STEP_DUR*0.9, 'square', 0.14, +4);
+  // Drums — kick on 0 & 4, hats on the off-sixteenths
+  if (local === 0 || local === 4) chipDrum(t, true);
+  if (local % 2 === 1)            chipDrum(t, false);
+}
+
+function startMusic() {
+  if (!audioCtx || musicTimer) return;
+  musicGain = audioCtx.createGain();
+  musicGain.gain.value = 0.10;                            // sits under the SFX
+  musicGain.connect(audioCtx.destination);
+  musicStep = 0;
+  musicNextTime = audioCtx.currentTime + 0.1;
+  musicTimer = setInterval(() => {
+    if (!audioCtx) return;
+    while (musicNextTime < audioCtx.currentTime + 0.15) { // lookahead scheduler
+      scheduleMusicStep(musicStep, musicNextTime);
+      musicNextTime += STEP_DUR;
+      musicStep = (musicStep + 1) % TOTAL_STEPS;
+    }
+  }, 25);
+}
+
+function stopMusic() {
+  if (musicTimer) { clearInterval(musicTimer); musicTimer = null; }
+  if (musicGain && audioCtx) {
+    musicGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.2);
+  }
+}
+
 // ── THREE.JS — PHOTOREALISTIC PBR PIPELINE ──────────────────────────────────
 const renderer = new THREE.WebGLRenderer({canvas: document.getElementById('c'), antialias: true});
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -380,21 +461,30 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x9ec6e8); // sky-blue until the HDRI streams in
 
 // ── IMAGE-BASED LIGHTING — Poly Haven HDRI sky ──────────────────────────────
+let skyDome = null;   // rotatable sky so the clouds scroll as you ride
 const pmrem = new THREE.PMREMGenerator(renderer);
 pmrem.compileEquirectangularShader();
 new THREE.RGBELoader().load(asset('vendor/hdri/sky_1k.hdr'), (hdr) => {
   const envMap = pmrem.fromEquirectangular(hdr).texture; // prefiltered IBL (lighting)
   scene.environment = envMap;                             // reflections + ambient
-  // Sharp sky dome — RGBELoader returns a DataTexture that defaults to NEAREST
-  // filtering (blocky). Force linear filtering + anisotropy for a smooth sky.
-  hdr.mapping    = THREE.EquirectangularReflectionMapping;
-  hdr.magFilter  = THREE.LinearFilter;
-  hdr.minFilter  = THREE.LinearMipmapLinearFilter;
-  hdr.generateMipmaps = true;
-  hdr.anisotropy = MAX_ANISO;
-  hdr.needsUpdate = true;
-  scene.background = hdr;
   pmrem.dispose();
+
+  // Scrolling sky: map the equirect onto a big inward-facing sphere we can
+  // rotate. RGBELoader returns a DataTexture that defaults to NEAREST filtering
+  // (blocky), so force linear filtering + repeat wrap + anisotropy.
+  hdr.mapping     = THREE.UVMapping;
+  hdr.wrapS       = THREE.RepeatWrapping;
+  hdr.wrapT       = THREE.ClampToEdgeWrapping;
+  hdr.magFilter   = THREE.LinearFilter;
+  hdr.minFilter   = THREE.LinearMipmapLinearFilter;
+  hdr.generateMipmaps = true;
+  hdr.anisotropy  = MAX_ANISO;
+  hdr.needsUpdate = true;
+  const skyMat = new THREE.MeshBasicMaterial({map: hdr, side: THREE.BackSide, depthWrite: false});
+  skyDome = new THREE.Mesh(new THREE.SphereGeometry(2400, 60, 40), skyMat);
+  skyDome.frustumCulled = false;
+  skyDome.renderOrder = -1;
+  scene.add(skyDome);
 });
 
 // ── LIGHTS ──────────────────────────────────────────────────────────────────
@@ -1157,6 +1247,7 @@ function startGame() {
   document.getElementById('crash').style.display   = 'none';
   document.getElementById('demo-label').style.display = 'none';
   stopEngine();
+  startMusic();
   gameMode = 'playing';
   resetBike(0);
 }
@@ -1466,6 +1557,12 @@ function updateCamera() {
   sun.position.set(GEN.x - 60, GEN.y + 120, 90);
   sun.target.position.set(GEN.x, GEN.y, 0);
   sun.target.updateMatrixWorld();
+
+  // Scroll the sky: keep the dome around the camera and spin it with travel
+  if (skyDome) {
+    skyDome.position.copy(camera.position);
+    skyDome.rotation.y = -GEN.x * 0.0011 - performance.now() * 0.000006;
+  }
 }
 
 function updateHUD() {
