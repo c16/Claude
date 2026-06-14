@@ -383,10 +383,17 @@ scene.background = new THREE.Color(0x9ec6e8); // sky-blue until the HDRI streams
 const pmrem = new THREE.PMREMGenerator(renderer);
 pmrem.compileEquirectangularShader();
 new THREE.RGBELoader().load(asset('vendor/hdri/sky_1k.hdr'), (hdr) => {
-  const envMap = pmrem.fromEquirectangular(hdr).texture;
-  scene.environment = envMap;                              // IBL reflections + ambient
-  hdr.mapping = THREE.EquirectangularReflectionMapping;
-  scene.background = hdr;                                  // sharp sky dome
+  const envMap = pmrem.fromEquirectangular(hdr).texture; // prefiltered IBL (lighting)
+  scene.environment = envMap;                             // reflections + ambient
+  // Sharp sky dome — RGBELoader returns a DataTexture that defaults to NEAREST
+  // filtering (blocky). Force linear filtering + anisotropy for a smooth sky.
+  hdr.mapping    = THREE.EquirectangularReflectionMapping;
+  hdr.magFilter  = THREE.LinearFilter;
+  hdr.minFilter  = THREE.LinearMipmapLinearFilter;
+  hdr.generateMipmaps = true;
+  hdr.anisotropy = MAX_ANISO;
+  hdr.needsUpdate = true;
+  scene.background = hdr;
   pmrem.dispose();
 });
 
